@@ -12,10 +12,7 @@ type RawStatement struct {
 	Statement string
 }
 
-// SplitRawStatements splits an input string to statement strings at terminating semicolons without parsing.
-// It preserves all comments.
-// Statements are terminated by `;`, `<eof>` or `;<eof>` and the minimum output will be []string{""}.
-// See [terminating semicolons].
+// StripComments strips comments in an input string without parsing.
 // This function won't panic but return error if lexer become error state.
 // filepath can be empty, it is only used in error message.
 //
