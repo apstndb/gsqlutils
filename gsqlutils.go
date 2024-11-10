@@ -63,14 +63,16 @@ func (e *ErrLexerStatus) Error() string {
 }
 
 func SeparateInputPreserveCommentsWithStatus(filepath, s string) ([]RawStatement, error) {
+	lexer := newLexer(filepath, s)
+
 	var results []RawStatement
 	var pos token.Pos
 outer:
-	for tok, err := range NewLexerSeq(filepath, s) {
+	for tok, err := range LexerSeq(lexer) {
 		if err != nil {
 			if err, ok := lo.ErrorsAs[*memefish.Error](err); ok {
-				results = append(results, RawStatement{Pos: pos, End: err.Position.End, Statement: newLexer(filepath, s).Buffer[pos:err.Position.End]})
-				return results, toErrLexerStatus(err, newLexer(filepath, s).Buffer[tok.Pos:])
+				results = append(results, RawStatement{Pos: pos, End: err.Position.End, Statement: lexer.Buffer[pos:err.Position.End]})
+				return results, toErrLexerStatus(err, lexer.Buffer[tok.Pos:])
 			}
 			return results, err
 		}
@@ -115,7 +117,7 @@ func toErrLexerStatus(err *memefish.Error, head string) error {
 	}
 }
 
-// StripComments strips comments in an input string without parsing.
+// StripComments strips comments in an input string without parsing but preserving whitespaces.
 // This function won't panic but return error if lexer become error state.
 // filepath can be empty, it is only used in error message.
 //
@@ -142,7 +144,6 @@ func StripComments(filepath, s string) (string, error) {
 				break
 			}
 
-			/// var spacesBuilder strings.Builder
 			it := xiter.Filter(slices.Values(tok.Comments), func(comment token.TokenComment) bool {
 				raw := comment.Raw
 				switch {
@@ -150,6 +151,7 @@ func StripComments(filepath, s string) (string, error) {
 					return true
 				case comment.Space != "":
 					return true
+				// rest are ignorable.
 				case strings.HasPrefix(raw, "--") || strings.HasPrefix(raw, "#"):
 					return false
 				default:
@@ -191,6 +193,7 @@ func FirstNonHintToken(filepath, s string) (token.Token, error) {
 
 	next, stop := iter.Pull2(SimpleSkipHintsSeq(LexerSeq(lexer)))
 	defer stop()
+
 	tok, err, _ := next()
 	if err != nil {
 		return tok, fmt.Errorf("can't get first token, err: %w, position: %v", err, lexer.Position(tok.Pos, tok.End))
@@ -201,10 +204,14 @@ func FirstNonHintToken(filepath, s string) (token.Token, error) {
 
 func SimpleSkipHintsSeq(seq iter.Seq2[token.Token, error]) iter.Seq2[token.Token, error] {
 	return func(yield func(token.Token, error) bool) {
+		// Temporary preserved "@" token, it will be released immediately on next token.
 		var undeterminedAt *token.Token
+
+		// inHint state is true, @{ <here> }.
 		var inHint bool
+
 		for tok, err := range seq {
-			// return or break
+			// returns
 			switch {
 			case err != nil:
 				_ = yield(tok, err)
@@ -212,23 +219,25 @@ func SimpleSkipHintsSeq(seq iter.Seq2[token.Token, error]) iter.Seq2[token.Token
 			case tok.Kind == token.TokenEOF:
 				_ = yield(tok, nil)
 				return
-			case undeterminedAt != nil:
-				// Both of them clear undeterminedAt.
+			default:
+				// no action
+			}
 
-				// inHint is only when @{.
+			if undeterminedAt != nil {
+				// Both of control flows reset undeterminedAt.
+
+				// Turn inHint true only when @{.
 				if tok.Kind == "{" {
 					inHint = true
 					undeterminedAt = nil
 					continue
-				} else {
-					// Flush undeterminedAt
-					if !yield(*undeterminedAt, nil) {
-						return
-					}
-					undeterminedAt = nil
-					// fallthrough
 				}
-			default:
+
+				// Flush and clear undeterminedAt
+				if !yield(*undeterminedAt, nil) {
+					return
+				}
+				undeterminedAt = nil
 				// fallthrough
 			}
 
@@ -267,6 +276,7 @@ func SimpleSkipHints(filepath, s string) (string, error) {
 
 func tryJoinTokenSeq(seq iter.Seq2[token.Token, error]) (string, error) {
 	var b strings.Builder
+	prevEnd := token.InvalidPos
 	for tok, err := range seq {
 		if err != nil {
 			return b.String(), err
@@ -276,11 +286,12 @@ func tryJoinTokenSeq(seq iter.Seq2[token.Token, error]) (string, error) {
 			break
 		}
 
-		if b.Len() > 0 {
+		if b.Len() > 0 && tok.Pos != prevEnd {
 			b.WriteRune(' ')
 		}
 
 		b.WriteString(tok.Raw)
+		prevEnd = tok.End
 	}
 	return b.String(), nil
 }
@@ -299,11 +310,10 @@ func SimpleStripComments(filepath, s string) (string, error) {
 }
 
 func newLexer(filepath string, s string) *memefish.Lexer {
-	lex := &memefish.Lexer{
+	return &memefish.Lexer{
 		File: &token.File{
 			FilePath: filepath,
 			Buffer:   s,
 		},
 	}
-	return lex
 }
