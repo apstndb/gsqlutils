@@ -258,35 +258,18 @@ func SimpleSkipHintsSeq(seq iter.Seq2[token.Token, error]) iter.Seq2[token.Token
 // It don't preserve any hints and comments and whitespaces. All tokens are separated with a single whitespace.
 // filepath can be empty, it is only used in error message.
 func SimpleSkipHints(filepath, s string) (string, error) {
-	lexer := newLexer(filepath, s)
-
-	var b strings.Builder
-	for tok, err := range SimpleSkipHintsSeq(LexerSeq(lexer)) {
-		switch {
-		case err != nil:
-			return b.String(), err
-		case tok.Kind == token.TokenEOF:
-			break
-		default:
-			if b.Len() > 0 {
-				b.WriteRune(' ')
-			}
-			b.WriteString(tok.Raw)
-		}
+	s, err := tryJoinTokenSeq(SimpleSkipHintsSeq(NewLexerSeq(filepath, s)))
+	if err != nil {
+		return s, fmt.Errorf("error on SimpleSkipHints, err: %w", err)
 	}
-	return b.String(), nil
+	return s, nil
 }
 
-// SimpleStripComments strips comments in an input string without parsing.
-// It don't preserve whitespaces. All tokens are separated with a single whitespace.
-// filepath can be empty, it is only used in error message.
-//
-// [terminating semicolons]: https://cloud.google.com/spanner/docs/reference/standard-sql/lexical#terminating_semicolons
-func SimpleStripComments(filepath, s string) (string, error) {
+func tryJoinTokenSeq(seq iter.Seq2[token.Token, error]) (string, error) {
 	var b strings.Builder
-	for tok, err := range NewLexerSeq(filepath, s) {
+	for tok, err := range seq {
 		if err != nil {
-			return "", err
+			return b.String(), err
 		}
 
 		if tok.Kind == token.TokenEOF {
@@ -300,6 +283,19 @@ func SimpleStripComments(filepath, s string) (string, error) {
 		b.WriteString(tok.Raw)
 	}
 	return b.String(), nil
+}
+
+// SimpleStripComments strips comments in an input string without parsing.
+// It don't preserve whitespaces. All tokens are separated with a single whitespace.
+// filepath can be empty, it is only used in error message.
+//
+// [terminating semicolons]: https://cloud.google.com/spanner/docs/reference/standard-sql/lexical#terminating_semicolons
+func SimpleStripComments(filepath, s string) (string, error) {
+	s, err := tryJoinTokenSeq(NewLexerSeq(filepath, s))
+	if err != nil {
+		return s, fmt.Errorf("error on SimpleStripComments, err: %w", err)
+	}
+	return s, nil
 }
 
 func newLexer(filepath string, s string) *memefish.Lexer {
