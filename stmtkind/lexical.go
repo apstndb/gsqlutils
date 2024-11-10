@@ -22,24 +22,6 @@ var kindFirstTokensMap = map[StatementKind][]string{
 	StatementKindCall:  {"CALL"},
 }
 
-// isKeywordLikeFuzzy is true when tok.IsKeywordLike(keywordLike) or tok.Kind == keywordLike
-func isKeywordLikeFuzzy(tok token.Token, keywordLike string) bool {
-	if tok.Kind == token.TokenIdent {
-		return tok.IsKeywordLike(keywordLike)
-	}
-	return tok.Kind == token.TokenKind(keywordLike)
-}
-
-// oneOfKeywordLikeFuzzy is true when tok is a one of keywordLikes.
-func oneOfKeywordLikeFuzzy(tok token.Token, keywordLikes ...string) bool {
-	for _, k := range keywordLikes {
-		if isKeywordLikeFuzzy(tok, k) {
-			return true
-		}
-	}
-	return false
-}
-
 func DetectLexical(s string) (StatementKind, error) {
 	tok, err := gsqlutils.FirstNonHintToken("", s)
 	if err != nil {
@@ -77,4 +59,22 @@ func IsUpdateDDLCompatibleLexical(s string) bool {
 
 func ignoreLast[T1, T2 any](v1 T1, _ T2) T1 {
 	return v1
+}
+
+// isKeywordLikeFuzzy is true when tok.IsKeywordLike(keywordLike) or tok.Kind == keywordLike
+func isKeywordLikeFuzzy(tok token.Token, keywordLike string) bool {
+	if tok.Kind == token.TokenIdent {
+		return tok.IsKeywordLike(keywordLike)
+	}
+	return tok.Kind == token.TokenKind(keywordLike)
+}
+
+// oneOfKeywordLikeFuzzy is true when tok is a one of keywordLikes.
+func oneOfKeywordLikeFuzzy(tok token.Token, keywordLikes ...string) bool {
+	for _, k := range keywordLikes {
+		if isKeywordLikeFuzzy(tok, k) {
+			return true
+		}
+	}
+	return false
 }
