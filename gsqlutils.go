@@ -188,50 +188,85 @@ func StripComments(filepath, s string) (string, error) {
 // Note: Currently, this function doesn't take care about nested curly brace in a hint.
 func FirstNonHintToken(filepath, s string) (token.Token, error) {
 	lexer := newLexer(filepath, s)
-	var inHint bool
-	for tok, err := range LexerSeq(lexer) {
-		switch {
-		case err != nil:
-			return tok, err
-		case tok.Kind == "@":
-			inHint = true
-			continue
-		case inHint && tok.Kind == token.TokenEOF:
-			return tok, fmt.Errorf("unclosed hint: %v", lexer.Position(tok.Pos, tok.End))
-		case inHint && tok.Kind == "}":
-			inHint = false
-			continue
-		case inHint:
-			continue
-		default:
-			return tok, nil
-		}
+
+	next, stop := iter.Pull2(SimpleSkipHintsSeq(LexerSeq(lexer)))
+	defer stop()
+	tok, err, _ := next()
+	if err != nil {
+		return tok, fmt.Errorf("can't get first token, err: %w, position: %v", err, lexer.Position(tok.Pos, tok.End))
 	}
 
-	panic("unreachable end of FirstNonHintToken")
+	return tok, nil
+}
+
+func SimpleSkipHintsSeq(seq iter.Seq2[token.Token, error]) iter.Seq2[token.Token, error] {
+	return func(yield func(token.Token, error) bool) {
+		var undeterminedAt *token.Token
+		var inHint bool
+		for tok, err := range seq {
+			// return or break
+			switch {
+			case err != nil:
+				_ = yield(tok, err)
+				return
+			case tok.Kind == token.TokenEOF:
+				_ = yield(tok, nil)
+				return
+			case undeterminedAt != nil:
+				// Both of them clear undeterminedAt.
+
+				// inHint is only when @{.
+				if tok.Kind == "{" {
+					inHint = true
+					undeterminedAt = nil
+					continue
+				} else {
+					// Flush undeterminedAt
+					if !yield(*undeterminedAt, nil) {
+						return
+					}
+					undeterminedAt = nil
+					// fallthrough
+				}
+			default:
+				// fallthrough
+			}
+
+			switch {
+			case inHint:
+				switch tok.Kind {
+				case token.TokenEOF:
+					_ = yield(tok, fmt.Errorf("unclosed hint"))
+					return
+				case "}":
+					inHint = false
+				}
+				continue
+			case tok.Kind == "@":
+				undeterminedAt = &tok
+				continue
+			default:
+				if !yield(tok, nil) {
+					return
+				}
+			}
+		}
+	}
 }
 
 // SimpleSkipHints strips hints in an input string without parsing.
-// It don't preserve any comments and whitespaces. All tokens are separated with a single whitespace.
+// It don't preserve any hints and comments and whitespaces. All tokens are separated with a single whitespace.
 // filepath can be empty, it is only used in error message.
 func SimpleSkipHints(filepath, s string) (string, error) {
+	lexer := newLexer(filepath, s)
+
 	var b strings.Builder
-	var inHint bool
-loop:
-	for tok, err := range NewLexerSeq(filepath, s) {
+	for tok, err := range SimpleSkipHintsSeq(LexerSeq(lexer)) {
 		switch {
 		case err != nil:
-			return "", err
+			return b.String(), err
 		case tok.Kind == token.TokenEOF:
-			break loop
-		case tok.Kind == "@":
-			inHint = true
-			continue
-		case inHint && tok.Kind == "}":
-			inHint = false
-			continue
-		case inHint:
-			continue
+			break
 		default:
 			if b.Len() > 0 {
 				b.WriteRune(' ')

@@ -19,6 +19,9 @@ func TestSimpleSkipHints(t *testing.T) {
 		{desc: "inline multiline comment", input: `SELECT 1/**/+ 2`, want: "SELECT 1 + 2"},
 		{desc: "statement hint", input: "@{OPTIMIZER_VERION=7}SELECT 1/*\n*/+ 2", want: "SELECT 1 + 2"},
 		{desc: "DML statement hint", input: "@{OPTIMIZER_VERION=7}DELETE Singers@{FORCE_INDEX=_BASE_TABLE} WHERE TRUE", want: "DELETE Singers WHERE TRUE"},
+		{desc: "DML statement hint",
+			input: "@{OPTIMIZER_VERION=7}DELETE Singers@{FORCE_INDEX=_BASE_TABLE} WHERE FirstName = @first_name",
+			want:  "DELETE Singers WHERE FirstName = @first_name"},
 	} {
 		t.Run(test.desc, func(t *testing.T) {
 			// got, err := internal.StripComments("", test.input)
