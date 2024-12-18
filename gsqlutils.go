@@ -2,6 +2,7 @@ package gsqlutils
 
 import (
 	"fmt"
+	"github.com/apstndb/gsqlutils/tokenfilter"
 	"iter"
 	"slices"
 	"strings"
@@ -191,7 +192,7 @@ func StripComments(filepath, s string) (string, error) {
 func FirstNonHintToken(filepath, s string) (token.Token, error) {
 	lexer := newLexer(filepath, s)
 
-	next, stop := iter.Pull2(SimpleSkipHintsSeq(LexerSeq(lexer)))
+	next, stop := iter.Pull2(tokenfilter.StripHints(LexerSeq(lexer)))
 	defer stop()
 
 	tok, err, _ := next()
@@ -202,84 +203,53 @@ func FirstNonHintToken(filepath, s string) (token.Token, error) {
 	return tok, nil
 }
 
-func SimpleSkipHintsSeq(seq iter.Seq2[token.Token, error]) iter.Seq2[token.Token, error] {
-	return func(yield func(token.Token, error) bool) {
-		// Temporary preserved "@" token, it will be released immediately on next token.
-		var undeterminedAt *token.Token
-
-		// inHint state is true, @{ <here> }.
-		var inHint bool
-
-		for tok, err := range seq {
-			// returns
-			switch {
-			case err != nil:
-				_ = yield(tok, err)
-				return
-			case tok.Kind == token.TokenEOF:
-				_ = yield(tok, nil)
-				return
-			default:
-				// no action
-			}
-
-			if undeterminedAt != nil {
-				// Both of control flows reset undeterminedAt.
-
-				// Turn inHint true only when @{.
-				if tok.Kind == "{" {
-					inHint = true
-					undeterminedAt = nil
-					continue
-				}
-
-				// Flush and clear undeterminedAt
-				if !yield(*undeterminedAt, nil) {
-					return
-				}
-				undeterminedAt = nil
-				// fallthrough
-			}
-
-			switch {
-			case inHint:
-				switch tok.Kind {
-				case token.TokenEOF:
-					_ = yield(tok, fmt.Errorf("unclosed hint"))
-					return
-				case "}":
-					inHint = false
-				}
-				continue
-			case tok.Kind == "@":
-				undeterminedAt = &tok
-				continue
-			default:
-				if !yield(tok, nil) {
-					return
-				}
-			}
-		}
-	}
-}
-
 // SimpleSkipHints strips hints in an input string without parsing.
 // It don't preserve any hints and comments and whitespaces. All tokens are separated with a single whitespace.
 // filepath can be empty, it is only used in error message.
 func SimpleSkipHints(filepath, s string) (string, error) {
-	s, err := tryJoinTokenSeq(SimpleSkipHintsSeq(NewLexerSeq(filepath, s)))
+	s, err := tryUnlexTokenSeq(tokenfilter.StripHints(NewLexerSeq(filepath, s)))
 	if err != nil {
 		return s, fmt.Errorf("error on SimpleSkipHints, err: %w", err)
 	}
 	return s, nil
 }
 
-func tryJoinTokenSeq(seq iter.Seq2[token.Token, error]) (string, error) {
+// tryUnlexTokenSeqSimple convert seq to string, it ignores whitespaces and comments.
+// Token are separated with a single whitespace, except when two tokens are consecutive with no whitespaces in between.
+func tryUnlexTokenSeq(seq iter.Seq2[token.Token, error]) (string, error) {
 	var b strings.Builder
 	prevEnd := token.InvalidPos
 	for tok, err := range seq {
 		if err != nil {
 			return b.String(), err
+		}
+
+		if tok.Kind == token.TokenEOF {
+			break
+		}
+
+		if b.Len() > 0 && tok.Pos != prevEnd {
+			b.WriteRune(' ')
+		}
+
+		b.WriteString(tok.Raw)
+		prevEnd = tok.End
+	}
+	return b.String(), nil
+}
+
+// tryUnlexTokenSeqSimple convert seq to string, it ignores whitespaces and comments.
+// Token are separated with a single whitespace, except when two tokens are consecutive with no whitespaces in between.
+func tryUnlexTokenSeqWithComments(seq iter.Seq2[token.Token, error]) (string, error) {
+	var b strings.Builder
+	prevEnd := token.InvalidPos
+	for tok, err := range seq {
+		if err != nil {
+			return b.String(), err
+		}
+
+		if len(tok.Comments) > 0 {
+
 		}
 
 		if tok.Kind == token.TokenEOF {
@@ -302,7 +272,7 @@ func tryJoinTokenSeq(seq iter.Seq2[token.Token, error]) (string, error) {
 //
 // [terminating semicolons]: https://cloud.google.com/spanner/docs/reference/standard-sql/lexical#terminating_semicolons
 func SimpleStripComments(filepath, s string) (string, error) {
-	s, err := tryJoinTokenSeq(NewLexerSeq(filepath, s))
+	s, err := tryUnlexTokenSeq(NewLexerSeq(filepath, s))
 	if err != nil {
 		return s, fmt.Errorf("error on SimpleStripComments, err: %w", err)
 	}

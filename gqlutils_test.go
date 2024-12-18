@@ -98,9 +98,9 @@ func TestStripComments(t *testing.T) {
 func TestSeparateInputPreserveCommentsWithStatus(t *testing.T) {
 	const (
 		terminatorHorizontal = `;`
-		terminatorVertical   = `\G`
 		terminatorUndefined  = ``
 	)
+
 	for _, tt := range []struct {
 		desc       string
 		input      string
