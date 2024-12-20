@@ -209,7 +209,7 @@ func FirstNonHintToken(filepath, s string) (token.Token, error) {
 // It don't preserve any hints and comments and whitespaces. All tokens are separated with a single whitespace.
 // filepath can be empty, it is only used in error message.
 func SimpleSkipHints(filepath, s string) (string, error) {
-	s, err := tryUnlexTokenSeq(tokenfilter.StripHints(NewLexerSeq(filepath, s)))
+	s, err := tryUnlexTokenSeq(true, tokenfilter.StripHints(NewLexerSeq(filepath, s)))
 	if err != nil {
 		return s, fmt.Errorf("error on SimpleSkipHints, err: %w", err)
 	}
@@ -234,11 +234,16 @@ func (t tokenList) prevKind(prevNth int) token.TokenKind {
 
 // tryUnlexTokenSeqSimple convert seq to string, it ignores whitespaces and comments.
 // Token are separated with a single whitespace, except when two tokens are consecutive with no whitespaces in between.
-func tryUnlexTokenSeq(seq iter.Seq2[token.Token, error]) (string, error) {
+func tryUnlexTokenSeq(newlineOnSemicolon bool, seq iter.Seq2[token.Token, error]) (string, error) {
 	tokens := tokenList(nil)
 
 	var b strings.Builder
 	prev := token.Token{Pos: token.InvalidPos, End: token.InvalidPos}
+
+	// Count "{" level in hint
+	inHintLevel := 0
+
+	// Count "<" level in compound type
 	compoundTypeLevel := 0
 	for tok, err := range seq {
 		if err != nil {
@@ -253,41 +258,50 @@ func tryUnlexTokenSeq(seq iter.Seq2[token.Token, error]) (string, error) {
 			compoundTypeLevel++
 		}
 
+		if (prev.Kind == "@" || inHintLevel > 0) && tok.Kind == "{" {
+			inHintLevel++
+		}
+
 		// TODO in-hint
-		if b.Len() > 0 &&
-			// The first token
-			prev.End != token.InvalidPos &&
+		if b.Len() > 0 {
+			if prev.Kind == ";" {
+				b.WriteRune(lo.Ternary(newlineOnSemicolon, '\n', ' '))
 
-			// after open or dot
-			!internal.OneOf(prev.Kind, "(", "{", "[", ".") &&
+				// after open or dot
+			} else if !internal.OneOf(prev.Kind, "(", "{", "[", ".") &&
+				// before close or dot, comma, colon
+				!internal.OneOf(tok.Kind, ")", "}", "]", ".", ",", ":", ";") &&
 
-			// before close or dot, comma, colon
-			!internal.OneOf(tok.Kind, ")", "}", "]", ".", ",", ":", ";") &&
+				// hint
+				!(tok.Kind == "@" && internal.OneOf(prev.Kind, ")", token.TokenIdent)) &&
+				!(prev.Kind == "@" && tok.Kind == "{") &&
 
-			// hint
-			!(tok.Kind == "@" && internal.OneOf(prev.Kind, ")", token.TokenIdent)) &&
-			!(prev.Kind == "@" && tok.Kind == "{") &&
+				// '=' in hint
+				!(internal.OneOf(prev.Kind, "@") && internal.OneOf(tok.Kind, "{")) &&
+				!(inHintLevel > 0 && prev.Kind == "=") &&
+				!(inHintLevel > 0 && tok.Kind == "=") &&
 
-			// lt & gt in compound types
-			!(internal.OneOf(prev.Kind, "STRUCT", "ARRAY") && internal.OneOf(tok.Kind, "<", "<>")) &&
-			!(compoundTypeLevel > 0 && prev.Kind == "<") &&
-			!(compoundTypeLevel > 0 && internal.OneOf(tok.Kind, ">", ">>")) &&
+				// '<' & '>' in compound types
+				!(internal.OneOf(prev.Kind, "STRUCT", "ARRAY") && internal.OneOf(tok.Kind, "<", "<>")) &&
+				!(compoundTypeLevel > 0 && prev.Kind == "<") &&
+				!(compoundTypeLevel > 0 && internal.OneOf(tok.Kind, ">", ">>")) &&
 
-			// UNNEST, WITH expression
-			!(tok.Kind == "(" && internal.OneOf(prev.Kind, "UNNEST", "WITH", "STRUCT", "ARRAY", "CAST")) &&
+				// UNNEST, WITH expression
+				!(tok.Kind == "(" && internal.OneOf(prev.Kind, "UNNEST", "WITH", "STRUCT", "ARRAY", "CAST")) &&
 
-			// subscript expression
-			!(tok.Kind == "[") &&
+				// subscript expression
+				!(tok.Kind == "[") &&
 
-			// unary minus
-			!(prev.Kind == "-" && internal.OneOf(tokens.prevKind(-2), "[", "{", "<", "(", ",", token.TokenBad)) &&
+				// unary minus
+				!(prev.Kind == "-" && internal.OneOf(tokens.prevKind(-2), "[", "{", "<", "(", ",", token.TokenBad)) &&
 
-			// "identifier(" can be function calls, it is natural not to be separated by whitespace, preserve original.
-			// Note: STORING () should be separated by whitespaces
-			!(tok.Kind == "(" && prev.Kind == token.TokenIdent &&
-				!prev.IsKeywordLike("STORING") &&
-				tok.Pos == prev.End) {
-			b.WriteRune(' ')
+				// "identifier(" can be function calls, it is natural not to be separated by whitespace, preserve original.
+				// Note: STORING () should be separated by whitespaces
+				!(tok.Kind == "(" && prev.Kind == token.TokenIdent &&
+					!prev.IsKeywordLike("STORING") &&
+					tok.Pos == prev.End) {
+				b.WriteRune(' ')
+			}
 		}
 
 		if compoundTypeLevel > 0 {
@@ -297,6 +311,10 @@ func tryUnlexTokenSeq(seq iter.Seq2[token.Token, error]) (string, error) {
 			case tok.Kind == ">>":
 				compoundTypeLevel -= 2
 			}
+		}
+
+		if inHintLevel > 0 && tok.Kind == "}" {
+			inHintLevel--
 		}
 
 		b.WriteString(tok.Raw)
@@ -342,7 +360,7 @@ func tryUnlexTokenSeqWithComments(seq iter.Seq2[token.Token, error]) (string, er
 //
 // [terminating semicolons]: https://cloud.google.com/spanner/docs/reference/standard-sql/lexical#terminating_semicolons
 func SimpleStripComments(filepath, s string) (string, error) {
-	s, err := tryUnlexTokenSeq(NewLexerSeq(filepath, s))
+	s, err := tryUnlexTokenSeq(true, NewLexerSeq(filepath, s))
 	if err != nil {
 		return s, fmt.Errorf("error on SimpleStripComments, err: %w", err)
 	}
