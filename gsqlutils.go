@@ -262,44 +262,44 @@ func tryUnlexTokenSeq(newlineOnSemicolon bool, seq iter.Seq2[token.Token, error]
 			inHintLevel++
 		}
 
-		// TODO in-hint
 		if b.Len() > 0 {
-			if prev.Kind == ";" {
+			switch {
+			// first token after semicolon
+			case prev.Kind == ";":
 				b.WriteRune(lo.Ternary(newlineOnSemicolon, '\n', ' '))
-
-				// after open or dot
-			} else if !internal.OneOf(prev.Kind, "(", "{", "[", ".") &&
+			// after open or dot
+			case internal.OneOf(prev.Kind, "(", "{", "[", "."),
 				// before close or dot, comma, colon
-				!internal.OneOf(tok.Kind, ")", "}", "]", ".", ",", ":", ";") &&
-
+				internal.OneOf(tok.Kind, ")", "}", "]", ".", ",", ":", ";"),
 				// hint
-				!(tok.Kind == "@" && internal.OneOf(prev.Kind, ")", token.TokenIdent)) &&
-				!(prev.Kind == "@" && tok.Kind == "{") &&
-
-				// '=' in hint
-				!(internal.OneOf(prev.Kind, "@") && internal.OneOf(tok.Kind, "{")) &&
-				!(inHintLevel > 0 && prev.Kind == "=") &&
-				!(inHintLevel > 0 && tok.Kind == "=") &&
+				tok.Kind == "@" && internal.OneOf(prev.Kind, ")", token.TokenIdent),
+				prev.Kind == "@" && tok.Kind == "{",
+				internal.OneOf(prev.Kind, "@") && internal.OneOf(tok.Kind, "{"),
+				inHintLevel > 0 && prev.Kind == "=",
+				inHintLevel > 0 && tok.Kind == "=",
 
 				// '<' & '>' in compound types
-				!(internal.OneOf(prev.Kind, "STRUCT", "ARRAY") && internal.OneOf(tok.Kind, "<", "<>")) &&
-				!(compoundTypeLevel > 0 && prev.Kind == "<") &&
-				!(compoundTypeLevel > 0 && internal.OneOf(tok.Kind, ">", ">>")) &&
+				internal.OneOf(prev.Kind, "STRUCT", "ARRAY") && internal.OneOf(tok.Kind, "<", "<>"),
+				compoundTypeLevel > 0 && prev.Kind == "<",
+				compoundTypeLevel > 0 && internal.OneOf(tok.Kind, ">", ">>"),
 
-				// UNNEST, WITH expression
-				!(tok.Kind == "(" && internal.OneOf(prev.Kind, "UNNEST", "WITH", "STRUCT", "ARRAY", "CAST")) &&
+				// function like keyword
+				tok.Kind == "(" && internal.OneOf(prev.Kind, "UNNEST", "WITH", "STRUCT", "ARRAY", "CAST"),
 
 				// subscript expression
-				!(tok.Kind == "[") &&
+				tok.Kind == "[",
 
 				// unary minus
-				!(prev.Kind == "-" && internal.OneOf(tokens.prevKind(-2), "[", "{", "<", "(", ",", token.TokenBad)) &&
+
+				prev.Kind == "-" && internal.OneOf(tokens.prevKind(-2), "[", "{", "<", "(", ",", token.TokenBad),
 
 				// "identifier(" can be function calls, it is natural not to be separated by whitespace, preserve original.
 				// Note: STORING () should be separated by whitespaces
-				!(tok.Kind == "(" && prev.Kind == token.TokenIdent &&
+				tok.Kind == "(" && prev.Kind == token.TokenIdent &&
 					!prev.IsKeywordLike("STORING") &&
-					tok.Pos == prev.End) {
+					tok.Pos == prev.End:
+				break
+			default:
 				b.WriteRune(' ')
 			}
 		}
