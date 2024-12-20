@@ -2,10 +2,12 @@ package gsqlutils
 
 import (
 	"fmt"
-	"github.com/apstndb/gsqlutils/tokenfilter"
 	"iter"
 	"slices"
 	"strings"
+
+	"github.com/apstndb/gsqlutils/internal"
+	"github.com/apstndb/gsqlutils/tokenfilter"
 
 	"github.com/cloudspannerecosystem/memefish"
 	"github.com/cloudspannerecosystem/memefish/token"
@@ -214,11 +216,30 @@ func SimpleSkipHints(filepath, s string) (string, error) {
 	return s, nil
 }
 
+var invalidToken = token.Token{Kind: token.TokenBad, Pos: token.InvalidPos, End: token.InvalidPos}
+
+func nthToken[N internal.Integer](tokens []token.Token, nth N) token.Token {
+	return internal.NthOr(tokens, nth, invalidToken)
+}
+
+func prevKind[N internal.Integer](tokens []token.Token, prevNth N) token.TokenKind {
+	return nthToken(tokens, -prevNth).Kind
+}
+
+type tokenList []token.Token
+
+func (t tokenList) prevKind(prevNth int) token.TokenKind {
+	return prevKind(t, prevNth)
+}
+
 // tryUnlexTokenSeqSimple convert seq to string, it ignores whitespaces and comments.
 // Token are separated with a single whitespace, except when two tokens are consecutive with no whitespaces in between.
 func tryUnlexTokenSeq(seq iter.Seq2[token.Token, error]) (string, error) {
+	tokens := tokenList(nil)
+
 	var b strings.Builder
-	prevEnd := token.InvalidPos
+	prev := token.Token{Pos: token.InvalidPos, End: token.InvalidPos}
+	compoundTypeLevel := 0
 	for tok, err := range seq {
 		if err != nil {
 			return b.String(), err
@@ -228,12 +249,64 @@ func tryUnlexTokenSeq(seq iter.Seq2[token.Token, error]) (string, error) {
 			break
 		}
 
-		if b.Len() > 0 && tok.Pos != prevEnd {
+		if (compoundTypeLevel > 0 || prev.Kind == "ARRAY" || prev.Kind == "STRUCT") && tok.Kind == "<" {
+			compoundTypeLevel++
+		}
+
+		// TODO in-hint
+		if b.Len() > 0 &&
+			// The first token
+			prev.End != token.InvalidPos &&
+
+			// after open or dot
+			!internal.OneOf(prev.Kind, "(", "{", "[", ".") &&
+
+			// before close or dot, comma, colon
+			!internal.OneOf(tok.Kind, ")", "}", "]", ".", ",", ":", ";") &&
+
+			// hint
+			!(tok.Kind == "@" && internal.OneOf(prev.Kind, ")", token.TokenIdent)) &&
+			!(prev.Kind == "@" && tok.Kind == "{") &&
+
+			// lt & gt in compound types
+			!(internal.OneOf(prev.Kind, "STRUCT", "ARRAY") && internal.OneOf(tok.Kind, "<", "<>")) &&
+			!(compoundTypeLevel > 0 && prev.Kind == "<") &&
+			!(compoundTypeLevel > 0 && internal.OneOf(tok.Kind, ">", ">>")) &&
+
+			// UNNEST, WITH expression
+			!(tok.Kind == "(" && internal.OneOf(prev.Kind, "UNNEST", "WITH", "STRUCT", "ARRAY", "CAST")) &&
+
+			// subscript expression
+			!(tok.Kind == "[") &&
+
+			// unary minus
+			!(prev.Kind == "-" && internal.OneOf(tokens.prevKind(-2), "[", "{", "<", "(", ",", token.TokenBad)) &&
+
+			// "identifier(" can be function calls, it is natural not to be separated by whitespace, preserve original.
+			// Note: STORING () should be separated by whitespaces
+			!(tok.Kind == "(" && prev.Kind == token.TokenIdent &&
+				!prev.IsKeywordLike("STORING") &&
+				tok.Pos == prev.End) {
 			b.WriteRune(' ')
 		}
 
+		if compoundTypeLevel > 0 {
+			switch {
+			case tok.Kind == ">":
+				compoundTypeLevel -= 1
+			case tok.Kind == ">>":
+				compoundTypeLevel -= 2
+			}
+		}
+
 		b.WriteString(tok.Raw)
-		prevEnd = tok.End
+
+		prev = tok
+
+		if tok.Kind == ";" {
+			tokens = tokenList(nil)
+		}
+		tokens = append(tokens, tok)
 	}
 	return b.String(), nil
 }
@@ -242,26 +315,23 @@ func tryUnlexTokenSeq(seq iter.Seq2[token.Token, error]) (string, error) {
 // Token are separated with a single whitespace, except when two tokens are consecutive with no whitespaces in between.
 func tryUnlexTokenSeqWithComments(seq iter.Seq2[token.Token, error]) (string, error) {
 	var b strings.Builder
-	prevEnd := token.InvalidPos
+	prev := token.Token{End: token.InvalidPos}
 	for tok, err := range seq {
 		if err != nil {
 			return b.String(), err
-		}
-
-		if len(tok.Comments) > 0 {
-
 		}
 
 		if tok.Kind == token.TokenEOF {
 			break
 		}
 
-		if b.Len() > 0 && tok.Pos != prevEnd {
+		if b.Len() > 0 && (slices.Contains([]token.TokenKind{}, prev.Kind)) && tok.Pos != prev.End {
 			b.WriteRune(' ')
 		}
 
 		b.WriteString(tok.Raw)
-		prevEnd = tok.End
+
+		prev = tok
 	}
 	return b.String(), nil
 }
