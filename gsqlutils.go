@@ -12,7 +12,6 @@ import (
 	"github.com/cloudspannerecosystem/memefish"
 	"github.com/cloudspannerecosystem/memefish/token"
 	"github.com/samber/lo"
-	"spheric.cloud/xiter"
 )
 
 type RawStatement struct {
@@ -147,24 +146,8 @@ func StripComments(filepath, s string) (string, error) {
 				break
 			}
 
-			it := xiter.Filter(slices.Values(tok.Comments), func(comment token.TokenComment) bool {
-				raw := comment.Raw
-				switch {
-				case stmtFirstPos != comment.Pos:
-					return true
-				case comment.Space != "":
-					return true
-				// rest are ignorable.
-				case strings.HasPrefix(raw, "--") || strings.HasPrefix(raw, "#"):
-					return false
-				default:
-					return false
-				}
-			})
+			hasNewline := hasNewline(stmtFirstPos, tok.Comments)
 
-			hasNewline := xiter.Any(it, func(comment token.TokenComment) bool {
-				return strings.ContainsAny(comment.Raw, "\n")
-			})
 			if stmtFirstPos != comment.Pos {
 				// Unless the comment is placed at the head of statement, comments will be a whitespace.
 				if hasNewline {
@@ -186,6 +169,33 @@ func StripComments(filepath, s string) (string, error) {
 
 	}
 	return b.String(), nil
+}
+
+func hasNewline(stmtFirstPos token.Pos, comments []token.TokenComment) bool {
+	for _, comment := range comments {
+		if !filterComment(stmtFirstPos, comment) {
+			continue
+		}
+		if strings.ContainsAny(comment.Raw, "\n") {
+			return true
+		}
+	}
+	return false
+}
+
+func filterComment(stmtFirstPos token.Pos, comment token.TokenComment) bool {
+	raw := comment.Raw
+	switch {
+	case stmtFirstPos != comment.Pos:
+		return true
+	case comment.Space != "":
+		return true
+	// rest are ignorable.
+	case strings.HasPrefix(raw, "--") || strings.HasPrefix(raw, "#"):
+		return false
+	default:
+		return false
+	}
 }
 
 // FirstNonHintToken returns the first non-hint token.

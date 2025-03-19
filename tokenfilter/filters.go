@@ -2,20 +2,16 @@ package tokenfilter
 
 import (
 	"fmt"
-	"github.com/cloudspannerecosystem/memefish/token"
 	"iter"
 	"slices"
-	"spheric.cloud/xiter"
+
+	"github.com/cloudspannerecosystem/memefish/token"
 )
 
 func stripCommentsFunc(tok token.Token) token.Token {
 	// tok is not a pointer,  so safe to mutate
 	tok.Comments = nil
 	return tok
-}
-
-func StripComments(seq iter.Seq2[token.Token, error]) iter.Seq2[token.Token, error] {
-	return xiter.MapKeys(seq, stripCommentsFunc)
 }
 
 // StripHints strip token sequences of hints.

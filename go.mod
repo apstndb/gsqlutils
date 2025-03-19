@@ -7,7 +7,6 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/k0kubun/pp v1.3.1-0.20200204103551-99835366d1cc
 	github.com/samber/lo v1.47.0
-	spheric.cloud/xiter v0.0.0-20240904151420-c999f37a46b2
 )
 
 require (
