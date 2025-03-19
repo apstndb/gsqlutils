@@ -8,12 +8,6 @@ import (
 	"github.com/cloudspannerecosystem/memefish/token"
 )
 
-func stripCommentsFunc(tok token.Token) token.Token {
-	// tok is not a pointer,  so safe to mutate
-	tok.Comments = nil
-	return tok
-}
-
 // StripHints strip token sequences of hints.
 // It preserve comments as best effort basis.
 func StripHints(seq iter.Seq2[token.Token, error]) iter.Seq2[token.Token, error] {
