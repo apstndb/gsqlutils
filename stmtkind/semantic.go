@@ -12,6 +12,8 @@ func DetectSemantic(n ast.Statement) StatementKind {
 		return StatementKindDDL
 	case *ast.QueryStatement:
 		return StatementKindQuery
+	case *ast.Call:
+		return StatementKindCall
 	default:
 		return StatementKindInvalid
 	}

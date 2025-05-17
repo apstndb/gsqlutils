@@ -3,8 +3,8 @@ module github.com/apstndb/gsqlutils
 go 1.23.1
 
 require (
-	github.com/cloudspannerecosystem/memefish v0.0.0-20241218080801-011117b89a58
-	github.com/google/go-cmp v0.6.0
+	github.com/cloudspannerecosystem/memefish v0.6.0
+	github.com/google/go-cmp v0.7.0
 	github.com/k0kubun/pp v1.3.1-0.20200204103551-99835366d1cc
 	github.com/samber/lo v1.47.0
 	spheric.cloud/xiter v0.0.0-20240904151420-c999f37a46b2

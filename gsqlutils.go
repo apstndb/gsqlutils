@@ -329,31 +329,6 @@ func tryUnlexTokenSeq(newlineOnSemicolon bool, seq iter.Seq2[token.Token, error]
 	return b.String(), nil
 }
 
-// tryUnlexTokenSeqSimple convert seq to string, it ignores whitespaces and comments.
-// Token are separated with a single whitespace, except when two tokens are consecutive with no whitespaces in between.
-func tryUnlexTokenSeqWithComments(seq iter.Seq2[token.Token, error]) (string, error) {
-	var b strings.Builder
-	prev := token.Token{End: token.InvalidPos}
-	for tok, err := range seq {
-		if err != nil {
-			return b.String(), err
-		}
-
-		if tok.Kind == token.TokenEOF {
-			break
-		}
-
-		if b.Len() > 0 && (slices.Contains([]token.TokenKind{}, prev.Kind)) && tok.Pos != prev.End {
-			b.WriteRune(' ')
-		}
-
-		b.WriteString(tok.Raw)
-
-		prev = tok
-	}
-	return b.String(), nil
-}
-
 // SimpleStripComments strips comments in an input string without parsing.
 // It don't preserve whitespaces. All tokens are separated with a single whitespace.
 // filepath can be empty, it is only used in error message.
