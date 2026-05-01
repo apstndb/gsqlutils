@@ -146,9 +146,9 @@ func StripComments(filepath, s string) (string, error) {
 			}
 
 			hasNewline := false
-			for _, comment := range tok.Comments {
-				raw := comment.Raw
-				if stmtFirstPos == comment.Pos && comment.Space == "" {
+			for _, c := range tok.Comments {
+				raw := c.Raw
+				if stmtFirstPos == c.Pos && c.Space == "" {
 					continue
 				}
 
