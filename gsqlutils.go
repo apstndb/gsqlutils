@@ -3,7 +3,6 @@ package gsqlutils
 import (
 	"fmt"
 	"iter"
-	"slices"
 	"strings"
 
 	"github.com/apstndb/gsqlutils/internal"
@@ -12,7 +11,6 @@ import (
 	"github.com/cloudspannerecosystem/memefish"
 	"github.com/cloudspannerecosystem/memefish/token"
 	"github.com/samber/lo"
-	"spheric.cloud/xiter"
 )
 
 type RawStatement struct {
@@ -147,24 +145,18 @@ func StripComments(filepath, s string) (string, error) {
 				break
 			}
 
-			it := xiter.Filter(slices.Values(tok.Comments), func(comment token.TokenComment) bool {
+			hasNewline := false
+			for _, comment := range tok.Comments {
 				raw := comment.Raw
-				switch {
-				case stmtFirstPos != comment.Pos:
-					return true
-				case comment.Space != "":
-					return true
-				// rest are ignorable.
-				case strings.HasPrefix(raw, "--") || strings.HasPrefix(raw, "#"):
-					return false
-				default:
-					return false
+				if stmtFirstPos == comment.Pos && comment.Space == "" {
+					continue
 				}
-			})
 
-			hasNewline := xiter.Any(it, func(comment token.TokenComment) bool {
-				return strings.ContainsAny(comment.Raw, "\n")
-			})
+				if strings.ContainsAny(raw, "\n") {
+					hasNewline = true
+					break
+				}
+			}
 			if stmtFirstPos != comment.Pos {
 				// Unless the comment is placed at the head of statement, comments will be a whitespace.
 				if hasNewline {
@@ -305,10 +297,10 @@ func tryUnlexTokenSeq(newlineOnSemicolon bool, seq iter.Seq2[token.Token, error]
 		}
 
 		if compoundTypeLevel > 0 {
-			switch {
-			case tok.Kind == ">":
+			switch tok.Kind {
+			case ">":
 				compoundTypeLevel -= 1
-			case tok.Kind == ">>":
+			case ">>":
 				compoundTypeLevel -= 2
 			}
 		}
