@@ -5,7 +5,6 @@ import (
 	"github.com/cloudspannerecosystem/memefish/token"
 	"iter"
 	"slices"
-	"spheric.cloud/xiter"
 )
 
 func stripCommentsFunc(tok token.Token) token.Token {
@@ -15,7 +14,13 @@ func stripCommentsFunc(tok token.Token) token.Token {
 }
 
 func StripComments(seq iter.Seq2[token.Token, error]) iter.Seq2[token.Token, error] {
-	return xiter.MapKeys(seq, stripCommentsFunc)
+	return func(yield func(token.Token, error) bool) {
+		for tok, err := range seq {
+			if !yield(stripCommentsFunc(tok), err) {
+				return
+			}
+		}
+	}
 }
 
 // StripHints strip token sequences of hints.
@@ -93,8 +98,8 @@ func StripHints(seq iter.Seq2[token.Token, error]) iter.Seq2[token.Token, error]
 				// no action
 			}
 
-			switch {
-			case tok.Kind == "@":
+			switch tok.Kind {
+			case "@":
 				undeterminedAt = &tok
 				continue
 			default:
