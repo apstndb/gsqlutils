@@ -19,6 +19,11 @@ const (
 	// but it is a compatible with ExecuteSQL API..
 	// https://cloud.google.com/spanner/docs/reference/standard-sql/graph-query-statementsl
 	StatementKindGraph
+
+	// StatementKindExportData is an EXPORT DATA statement. Spanner uses this
+	// ExecuteSQL-compatible statement to persist Graph algorithm results.
+	// https://cloud.google.com/spanner/docs/graph/run-algorithms
+	StatementKindExportData
 )
 
 func (k StatementKind) String() string {
@@ -33,6 +38,8 @@ func (k StatementKind) String() string {
 		return "CALL"
 	case StatementKindGraph:
 		return "Graph"
+	case StatementKindExportData:
+		return "EXPORT DATA"
 	case StatementKindInvalid:
 		return "Invalid"
 	default:
@@ -64,9 +71,13 @@ func (k StatementKind) IsGraph() bool {
 	return k == StatementKindGraph
 }
 
+func (k StatementKind) IsExportData() bool {
+	return k == StatementKindExportData
+}
+
 // IsExecuteSQLCompatible is true when it is compatible with ExecuteSQL API family.
-// Note: It is true if it is one of query, DML, Procedural(CALL), GRAPH statements,
-// it means all statements except DDL statements.
+// Note: It is true for query, DML, Procedural(CALL), GRAPH, and EXPORT DATA
+// statements; in other words, all valid statement kinds except DDL.
 func (k StatementKind) IsExecuteSQLCompatible() bool {
 	return !k.IsInvalid() && !k.IsDDL()
 }

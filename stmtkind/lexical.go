@@ -20,6 +20,10 @@ var kindFirstTokensMap = map[StatementKind][]string{
 	StatementKindQuery: {"SELECT", "WITH", "(", "FROM"},
 	StatementKindGraph: {"GRAPH"},
 	StatementKindCall:  {"CALL"},
+	// EXPORT DATA persists Spanner Graph algorithm results and executes through
+	// the ExecuteSQL API family.
+	// https://cloud.google.com/spanner/docs/graph/run-algorithms
+	StatementKindExportData: {"EXPORT"},
 }
 
 func DetectLexical(s string) (StatementKind, error) {
